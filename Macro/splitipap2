@@ -1,0 +1,134 @@
+/****************************************************************/
+/*      splitipap2                17.08.2001                    */
+/****************************************************************/
+/*      Short Description :                                     */
+/*      AU program to create separate InPhase and AntiPhase     */
+/*      datasets for DSSE experiments                           */
+/****************************************************************/
+/*      Keywords :                                              */
+/*      DSSE (IPAP)                                             */
+/****************************************************************/
+/*      Description/Usage :                                     */
+/*      DSSE pulseprograms record inphase+antiphase and         */
+/*      inphase-antiphase in an interleaved fashion. The AU     */
+/*      program creates separate inphase and antiphase          */
+/*      datasets                                                */
+/****************************************************************/
+/*      Author(s) :                                             */
+/*      Name            : Wolfgang Bermel                       */
+/*      Organisation    : Bruker Analytik                       */
+/*      Email           : wolfgang.bermel@bruker.de             */
+/****************************************************************/
+/*      Name            Date    Modification:                   */
+/*      ber             010817  created                         */
+/*      ber             010921  fopen modified for binary       */
+/****************************************************************/
+/*
+$Id: splitipap2,v 1.3 2001/09/21 13:57:53 rke Exp $
+*/
+
+
+#include <fcntl.h>
+#include <limits.h>
+
+#define MAXSIZE 16384
+
+
+char infile[PATH_MAX], outfile1[PATH_MAX], outfile2[PATH_MAX];
+
+int row1[MAXSIZE], row2[MAXSIZE], row3[MAXSIZE], row4[MAXSIZE];
+int rowout1[MAXSIZE], rowout2[MAXSIZE], rowout3[MAXSIZE], rowout4[MAXSIZE];
+int td1, td2, td1s;
+int i, j;
+int nexpno, byteorder;
+
+FILE *fpin, *fpout1, *fpout2;
+
+
+
+GETCURDATA
+
+
+FETCHPARS("BYTORDA",&byteorder)
+FETCHPARS("TD",&td2)
+
+td2 = ( (td2 + 255) / 256 ) * 256;
+
+FETCHPAR1("TD",&td1)
+FETCHPAR1S("TD",&td1s)
+
+
+(void)sprintf(infile,"%s/data/%s/nmr/%s/%d/ser",disk,user,name,expno);
+
+nexpno = expno + 1000;
+GETINT("First dataset to be stored in expno : ",nexpno);
+
+
+(void)sprintf(outfile1,"%s/data/%s/nmr/%s/%d/ser",disk,user,name,nexpno);
+(void)sprintf(outfile2,"%s/data/%s/nmr/%s/%d/ser",disk,user,name,nexpno+1);
+
+WRA(nexpno)
+WRA(nexpno+1)
+
+
+fpin=fopen(infile,"rb");
+fpout1=fopen(outfile1,"wb");
+fpout2=fopen(outfile2,"wb");
+
+
+for (i=0; i < td1s/4; i++)
+   {
+   fread(row1,sizeof(int),td2,fpin);
+   local_swap4(row1,sizeof(int)*td2,byteorder);
+   fread(row2,sizeof(int),td2,fpin);
+   local_swap4(row2,sizeof(int)*td2,byteorder);
+   fread(row3,sizeof(int),td2,fpin);
+   local_swap4(row3,sizeof(int)*td2,byteorder);
+   fread(row4,sizeof(int),td2,fpin);
+   local_swap4(row4,sizeof(int)*td2,byteorder);
+
+   for (j=0; j < td2/2 ; j++)
+      {
+      rowout1[2*j]   = - row1[2*j]   - row2[2*j]   - row3[2*j+1] + row4[2*j+1];
+      rowout1[2*j+1] = - row1[2*j+1] - row2[2*j+1] + row3[2*j]   - row4[2*j];
+
+      rowout2[2*j]   = + row1[2*j+1] - row2[2*j+1] - row3[2*j]   - row4[2*j];
+      rowout2[2*j+1] = - row1[2*j]   + row2[2*j]   - row3[2*j+1] - row4[2*j+1];
+
+      rowout3[2*j]   = + row1[2*j]   + row2[2*j]   - row3[2*j+1] + row4[2*j+1];
+      rowout3[2*j+1] = + row1[2*j+1] + row2[2*j+1] + row3[2*j]   - row4[2*j];
+
+      rowout4[2*j]   = + row1[2*j+1] - row2[2*j+1] + row3[2*j]   + row4[2*j];
+      rowout4[2*j+1] = - row1[2*j]   + row2[2*j]   + row3[2*j+1] + row4[2*j+1];
+      }
+
+   local_swap4(rowout1,sizeof(int)*td2,byteorder);
+   fwrite(rowout1,sizeof(int),td2,fpout1);
+   local_swap4(rowout2,sizeof(int)*td2,byteorder);
+   fwrite(rowout2,sizeof(int),td2,fpout1);
+   local_swap4(rowout3,sizeof(int)*td2,byteorder);
+   fwrite(rowout3,sizeof(int),td2,fpout2);
+   local_swap4(rowout4,sizeof(int)*td2,byteorder);
+   fwrite(rowout4,sizeof(int),td2,fpout2);
+   }
+
+
+fclose(fpin);
+fclose(fpout1);
+fclose(fpout2);
+
+
+td1 /= 2;
+td1s = (td1s / 2) ;
+
+
+DATASET (name,nexpno,procno,disk,user)
+STOREPAR1("TD",td1)
+STOREPAR1S("TD",td1s)
+
+DATASET (name,nexpno+1,procno,disk,user)
+STOREPAR1("TD",td1)
+STOREPAR1S("TD",td1s)
+
+
+QUIT
